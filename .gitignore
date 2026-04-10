@@ -1,0 +1,5 @@
+/target
+/result
+.direnv
+# Keep the original bash script out of git if desired
+# /hypr-rectangle

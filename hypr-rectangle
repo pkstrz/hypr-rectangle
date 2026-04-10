@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# Rectangle-like window management for Hyprland
+
+# Read Hyprland gap settings
+normalize_gap_vector() {
+    local raw="$1"
+    local def="${2:-0}"
+    local a b c d
+    read -r a b c d <<< "$raw"
+    if [ -z "$a" ]; then
+        a=$def; b=$def; c=$def; d=$def
+    elif [ -z "$b" ] || [ -z "$c" ] || [ -z "$d" ]; then
+        b=$a; c=$a; d=$a
+    fi
+    echo "$a $b $c $d"
+}
+
+GAPS_OUT_RAW=$(hyprctl getoption general:gaps_out -j | jq -r '.custom // (.float|tostring) // (.int|tostring) // "0"' 2>/dev/null)
+read -r GAP_OUT_TOP GAP_OUT_RIGHT GAP_OUT_BOTTOM GAP_OUT_LEFT <<< "$(normalize_gap_vector "$GAPS_OUT_RAW" 0)"
+
+GAPS_IN_RAW=$(hyprctl getoption general:gaps_in -j | jq -r '.custom // (.float|tostring) // (.int|tostring) // "0"' 2>/dev/null)
+read -r GAPS_IN_TOP GAPS_IN_RIGHT GAPS_IN_BOTTOM GAPS_IN_LEFT <<< "$(normalize_gap_vector "$GAPS_IN_RAW" 0)"
+
+# Use horizontal/vertical inner gaps (Hyprland uses one value, but allow vector format)
+GAP_IN_HORIZONTAL=$GAPS_IN_LEFT
+GAP_IN_VERTICAL=$GAPS_IN_TOP
+
+# Get active monitor info (including offset from monitor layout)
+MON_DATA=$(hyprctl monitors -j | jq -r '.[] | select(.focused==true) | "\(.name) \(.width) \(.height) \(.x) \(.y)"')
+
+if [ -z "$MON_DATA" ]; then
+    notify-send "hypr-rectangle" "Failed to read monitor data" >/dev/null 2>&1
+    exit 1
+fi
+
+read -r MON_NAME MON_WIDTH MON_HEIGHT MON_X MON_Y <<< "$MON_DATA"
+
+# Derive exclusive offsets from layer surfaces (Waybar, etc.)
+EDGE_TOL=100
+LEFT_OFFSET=0
+RIGHT_OFFSET=0
+TOP_OFFSET=0
+BOTTOM_OFFSET=0
+
+LAYER_DATA=$(hyprctl layers -j | jq -r --arg MON "$MON_NAME" '.[$MON].levels[]? | .[]? | "\(.x) \(.y) \(.w) \(.h)"')
+
+if [ -n "$LAYER_DATA" ]; then
+    while read -r LX LY LW LH; do
+        [ -z "$LX" ] && continue
+
+        # Skip fullscreen background layers (e.g. hyprpaper)
+        if [ "$LW" -ge $((MON_WIDTH - 1)) ] && [ "$LH" -ge $((MON_HEIGHT - 1)) ]; then
+            continue
+        fi
+
+        # Horizontal layers (top/bottom)
+        if [ "$LW" -ge $((MON_WIDTH - EDGE_TOL)) ]; then
+            TOP_DIST=$((LY - MON_Y))
+            [ $TOP_DIST -lt 0 ] && TOP_DIST=0
+            BOTTOM_DIST=$(((MON_Y + MON_HEIGHT) - (LY + LH)))
+            [ $BOTTOM_DIST -lt 0 ] && BOTTOM_DIST=0
+
+            if [ $TOP_DIST -le $EDGE_TOL ]; then
+                OFFSET=$((TOP_DIST + LH))
+                if [ $OFFSET -gt $TOP_OFFSET ]; then TOP_OFFSET=$OFFSET; fi
+            elif [ $BOTTOM_DIST -le $EDGE_TOL ]; then
+                OFFSET=$((BOTTOM_DIST + LH))
+                if [ $OFFSET -gt $BOTTOM_OFFSET ]; then BOTTOM_OFFSET=$OFFSET; fi
+            fi
+            continue
+        fi
+
+        # Vertical layers (left/right)
+        if [ "$LH" -ge $((MON_HEIGHT - EDGE_TOL)) ]; then
+            LEFT_DIST=$((LX - MON_X))
+            [ $LEFT_DIST -lt 0 ] && LEFT_DIST=0
+            RIGHT_DIST=$(((MON_X + MON_WIDTH) - (LX + LW)))
+            [ $RIGHT_DIST -lt 0 ] && RIGHT_DIST=0
+
+            if [ $LEFT_DIST -le $EDGE_TOL ]; then
+                OFFSET=$((LEFT_DIST + LW))
+                if [ $OFFSET -gt $LEFT_OFFSET ]; then LEFT_OFFSET=$OFFSET; fi
+            elif [ $RIGHT_DIST -le $EDGE_TOL ]; then
+                OFFSET=$((RIGHT_DIST + LW))
+                if [ $OFFSET -gt $RIGHT_OFFSET ]; then RIGHT_OFFSET=$OFFSET; fi
+            fi
+        fi
+    done <<< "$LAYER_DATA"
+fi
+
+# Adjust for reserved space
+USABLE_WIDTH=$((MON_WIDTH - LEFT_OFFSET - RIGHT_OFFSET))
+USABLE_HEIGHT=$((MON_HEIGHT - TOP_OFFSET - BOTTOM_OFFSET))
+OFFSET_X=$((MON_X + LEFT_OFFSET))
+OFFSET_Y=$((MON_Y + TOP_OFFSET))
+
+# Apply outer gaps – shrink usable area and offset accordingly
+if [ $USABLE_WIDTH -gt $((GAP_OUT_LEFT + GAP_OUT_RIGHT)) ]; then
+    OFFSET_X=$((OFFSET_X + GAP_OUT_LEFT))
+    USABLE_WIDTH=$((USABLE_WIDTH - GAP_OUT_LEFT - GAP_OUT_RIGHT))
+fi
+
+if [ $USABLE_HEIGHT -gt $((GAP_OUT_TOP + GAP_OUT_BOTTOM)) ]; then
+    OFFSET_Y=$((OFFSET_Y + GAP_OUT_TOP))
+    USABLE_HEIGHT=$((USABLE_HEIGHT - GAP_OUT_TOP - GAP_OUT_BOTTOM))
+fi
+
+[ $USABLE_WIDTH -le 0 ] && USABLE_WIDTH=1
+[ $USABLE_HEIGHT -le 0 ] && USABLE_HEIGHT=1
+
+# Calculate dimensions
+HALF_WIDTH=$((USABLE_WIDTH / 2))
+HALF_HEIGHT=$((USABLE_HEIGHT / 2))
+THIRD_WIDTH=$((USABLE_WIDTH / 3))
+TWO_THIRD_WIDTH=$((USABLE_WIDTH * 2 / 3))
+
+# Gap-aware split dimensions
+if [ $USABLE_WIDTH -gt $GAP_IN_HORIZONTAL ]; then
+    HALF_WIDTH_G=$(((USABLE_WIDTH - GAP_IN_HORIZONTAL) / 2))
+else
+    HALF_WIDTH_G=$HALF_WIDTH
+fi
+[ $HALF_WIDTH_G -lt 1 ] && HALF_WIDTH_G=1
+
+if [ $USABLE_HEIGHT -gt $GAP_IN_VERTICAL ]; then
+    HALF_HEIGHT_G=$(((USABLE_HEIGHT - GAP_IN_VERTICAL) / 2))
+else
+    HALF_HEIGHT_G=$HALF_HEIGHT
+fi
+[ $HALF_HEIGHT_G -lt 1 ] && HALF_HEIGHT_G=1
+
+DOUBLE_GAP_IN=$((GAP_IN_HORIZONTAL * 2))
+if [ $USABLE_WIDTH -gt $DOUBLE_GAP_IN ]; then
+    THIRD_WIDTH_G=$(((USABLE_WIDTH - DOUBLE_GAP_IN) / 3))
+else
+    THIRD_WIDTH_G=$THIRD_WIDTH
+fi
+[ $THIRD_WIDTH_G -lt 1 ] && THIRD_WIDTH_G=1
+
+TWO_THIRD_G=$((THIRD_WIDTH_G * 2 + GAP_IN_HORIZONTAL))
+
+case "$1" in
+    left)
+        # Left half - move first, then resize
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${HALF_WIDTH_G} ${USABLE_HEIGHT}
+        ;;
+    right)
+        # Right half
+        RIGHT_X=$((OFFSET_X + HALF_WIDTH_G + GAP_IN_HORIZONTAL))
+        hyprctl dispatch moveactive exact ${RIGHT_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${HALF_WIDTH_G} ${USABLE_HEIGHT}
+        ;;
+    up)
+        # Top half
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${USABLE_WIDTH} ${HALF_HEIGHT_G}
+        ;;
+    down)
+        # Bottom half
+        BOTTOM_Y=$((OFFSET_Y + HALF_HEIGHT_G + GAP_IN_VERTICAL))
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${BOTTOM_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${USABLE_WIDTH} ${HALF_HEIGHT_G}
+        ;;
+    left-third)
+        # Left third
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${THIRD_WIDTH_G} ${USABLE_HEIGHT}
+        ;;
+    center-third)
+        # Center third
+        CENTER_THIRD_X=$((OFFSET_X + THIRD_WIDTH_G + GAP_IN_HORIZONTAL))
+        hyprctl dispatch moveactive exact ${CENTER_THIRD_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${THIRD_WIDTH_G} ${USABLE_HEIGHT}
+        ;;
+    right-third)
+        # Right third
+        RIGHT_THIRD_X=$((OFFSET_X + THIRD_WIDTH_G * 2 + GAP_IN_HORIZONTAL * 2))
+        hyprctl dispatch moveactive exact ${RIGHT_THIRD_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${THIRD_WIDTH_G} ${USABLE_HEIGHT}
+        ;;
+    left-two-third)
+        # Left 2/3
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${TWO_THIRD_G} ${USABLE_HEIGHT}
+        ;;
+    right-two-third)
+        # Right 2/3
+        RIGHT_TWO_THIRD_X=$((OFFSET_X + THIRD_WIDTH_G + GAP_IN_HORIZONTAL))
+        hyprctl dispatch moveactive exact ${RIGHT_TWO_THIRD_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${TWO_THIRD_G} ${USABLE_HEIGHT}
+        ;;
+    maximize)
+        # Almost fullscreen (respecting gaps)
+        hyprctl dispatch moveactive exact ${OFFSET_X} ${OFFSET_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${USABLE_WIDTH} ${USABLE_HEIGHT}
+        ;;
+    center)
+        # Center window (75% size)
+        CENTER_W=$((USABLE_WIDTH * 75 / 100))
+        CENTER_H=$((USABLE_HEIGHT * 75 / 100))
+        CENTER_X=$(( OFFSET_X + (USABLE_WIDTH - CENTER_W) / 2 ))
+        CENTER_Y=$(( OFFSET_Y + (USABLE_HEIGHT - CENTER_H) / 2 ))
+        hyprctl dispatch moveactive exact ${CENTER_X} ${CENTER_Y}
+        sleep 0.01
+        hyprctl dispatch resizeactive exact ${CENTER_W} ${CENTER_H}
+        ;;
+    *)
+        echo "Usage: hypr-rectangle {left|right|up|down|left-third|center-third|right-third|left-two-third|right-two-third|maximize|center}"
+        exit 1
+        ;;
+esac
