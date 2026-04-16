@@ -30,7 +30,7 @@
 
           meta = with pkgs.lib; {
             description = "Rectangle-like window management for Hyprland";
-            homepage = "https://github.com/USER/hypr-rectangle";
+            homepage = "https://github.com/pkstrz/hypr-rectangle";
             license = licenses.mit;
             maintainers = [ ];
             platforms = platforms.linux;

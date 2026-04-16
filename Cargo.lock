@@ -199,6 +199,7 @@ dependencies = [
  "anyhow",
  "clap",
  "hyprland",
+ "serde",
  "serde_json",
 ]
 
