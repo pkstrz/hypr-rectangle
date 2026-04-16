@@ -18,6 +18,7 @@ use crate::state::{Geometry, State};
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let (outer_gaps, inner_gaps) = gaps::get_gaps()?;
+    let border = gaps::get_border_size()?;
     let monitor = area::resolve_monitor(cli.monitor.as_deref())?;
     let area = area::calculate_usable_area(&monitor, &outer_gaps)?;
 
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
     }
 
     snapshot_active_window()?;
-    dispatch::execute(cli.command, &area, &inner_gaps)?;
+    dispatch::execute(cli.command, &area, &inner_gaps, border)?;
     Ok(())
 }
 

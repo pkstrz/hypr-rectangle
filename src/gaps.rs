@@ -105,6 +105,16 @@ pub fn get_gaps() -> Result<(Gaps, Gaps)> {
     Ok((Gaps::parse(&outer_raw), Gaps::parse(&inner_raw)))
 }
 
+/// Read `general:border_size`. Hyprland draws borders OUTSIDE the reported
+/// `at`/`size` rect, so tile positions must inset by this value to match the
+/// layout Hyprland's native tiler produces.
+pub fn get_border_size() -> Result<i32> {
+    let raw = get_hyprctl_option("general:border_size").context("Failed to get border_size")?;
+    raw.trim()
+        .parse::<i32>()
+        .with_context(|| format!("Cannot parse border_size {:?}", raw))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

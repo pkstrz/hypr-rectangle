@@ -1,7 +1,11 @@
 use crate::area::UsableArea;
 use crate::gaps::Gaps;
 
-/// Computed dimensions for various snap targets on a given usable area.
+/// Tile dimensions in VISIBLE-frame space (border drawn outside these rects).
+///
+/// `gap_h` / `gap_v` are the visible space between adjacent tile frames.
+/// Per Hyprland's model, `gaps_in` is applied per-tile-side, so the visible
+/// gap between two neighbours is `2 * gaps_in`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Dimensions {
     pub half_width: i32,
@@ -12,13 +16,13 @@ pub struct Dimensions {
     pub gap_v: i32,
 }
 
-/// Compute half/third dimensions accounting for inner gaps.
+/// Compute tile dimensions for the given visible-frame usable area.
 ///
 /// For asymmetric inner gaps, the larger edge wins so adjacent tiles never
 /// overlap — overshoot by a few pixels is less noticeable than overlap.
 pub fn calculate_dimensions(area: &UsableArea, inner_gaps: &Gaps) -> Dimensions {
-    let gap_h = inner_gaps.left.max(inner_gaps.right);
-    let gap_v = inner_gaps.top.max(inner_gaps.bottom);
+    let gap_h = inner_gaps.left.max(inner_gaps.right) * 2;
+    let gap_v = inner_gaps.top.max(inner_gaps.bottom) * 2;
 
     let half_width = if area.width > gap_h {
         (area.width - gap_h) / 2
@@ -77,6 +81,13 @@ mod tests {
     }
 
     #[test]
+    fn visible_gap_is_twice_gaps_in() {
+        let d = calculate_dimensions(&area(1000, 800), &sym_gap(5));
+        assert_eq!(d.gap_h, 10);
+        assert_eq!(d.gap_v, 10);
+    }
+
+    #[test]
     fn halves_sum_plus_gap_equals_width() {
         let d = calculate_dimensions(&area(1000, 800), &sym_gap(10));
         assert_eq!(d.half_width * 2 + d.gap_h, 1000);
@@ -84,13 +95,13 @@ mod tests {
 
     #[test]
     fn thirds_sum_plus_gaps_equals_width() {
-        let d = calculate_dimensions(&area(999, 800), &sym_gap(6));
+        let d = calculate_dimensions(&area(999, 800), &sym_gap(3));
         assert_eq!(d.third_width * 3 + d.gap_h * 2, 999);
     }
 
     #[test]
     fn two_third_is_two_thirds_plus_gap() {
-        let d = calculate_dimensions(&area(900, 600), &sym_gap(10));
+        let d = calculate_dimensions(&area(900, 600), &sym_gap(5));
         assert_eq!(d.two_third_width, d.third_width * 2 + d.gap_h);
     }
 
@@ -110,8 +121,8 @@ mod tests {
             left: 5,
         };
         let d = calculate_dimensions(&area(1000, 800), &gaps);
-        assert_eq!(d.gap_h, 20);
-        assert_eq!(d.gap_v, 2);
+        assert_eq!(d.gap_h, 40);
+        assert_eq!(d.gap_v, 4);
     }
 
     #[test]

@@ -30,6 +30,18 @@ pub fn dispatch_active(x: i32, y: i32, width: i32, height: i32) -> Result<()> {
     Ok(())
 }
 
+/// Place a window so its VISIBLE frame occupies `(vx, vy, vw, vh)`. Hyprland
+/// draws `general:border_size` outside the reported `at`/`size` rect, so to
+/// make the visible frame match the intended rectangle we inset the reported
+/// coords by `border` on each side.
+fn dispatch_visible(vx: i32, vy: i32, vw: i32, vh: i32, border: i32) -> Result<()> {
+    let at_x = vx + border;
+    let at_y = vy + border;
+    let size_w = (vw - 2 * border).max(1);
+    let size_h = (vh - 2 * border).max(1);
+    dispatch_active(at_x, at_y, size_w, size_h)
+}
+
 /// Move and resize a specific window (by address) to exact coordinates.
 pub fn dispatch_by_address(
     address: &Address,
@@ -73,73 +85,89 @@ fn i16_or_overflow(value: i32, what: &str) -> Result<i16> {
 
 /// Execute a snap command against the given usable area. Does not cover
 /// `Restore` — that path is handled separately by the state module.
-pub fn execute(cmd: Command, area: &UsableArea, inner_gaps: &Gaps) -> Result<()> {
+pub fn execute(cmd: Command, area: &UsableArea, inner_gaps: &Gaps, border: i32) -> Result<()> {
     let d = calculate_dimensions(area, inner_gaps);
 
     match cmd {
-        Command::Left => dispatch_active(area.x, area.y, d.half_width, area.height),
-        Command::Right => dispatch_active(
+        Command::Left => dispatch_visible(area.x, area.y, d.half_width, area.height, border),
+        Command::Right => dispatch_visible(
             area.x + d.half_width + d.gap_h,
             area.y,
             d.half_width,
             area.height,
+            border,
         ),
-        Command::Up => dispatch_active(area.x, area.y, area.width, d.half_height),
-        Command::Down => dispatch_active(
+        Command::Up => dispatch_visible(area.x, area.y, area.width, d.half_height, border),
+        Command::Down => dispatch_visible(
             area.x,
             area.y + d.half_height + d.gap_v,
             area.width,
             d.half_height,
+            border,
         ),
 
-        Command::TopLeft => dispatch_active(area.x, area.y, d.half_width, d.half_height),
-        Command::TopRight => dispatch_active(
+        Command::TopLeft => {
+            dispatch_visible(area.x, area.y, d.half_width, d.half_height, border)
+        }
+        Command::TopRight => dispatch_visible(
             area.x + d.half_width + d.gap_h,
             area.y,
             d.half_width,
             d.half_height,
+            border,
         ),
-        Command::BottomLeft => dispatch_active(
+        Command::BottomLeft => dispatch_visible(
             area.x,
             area.y + d.half_height + d.gap_v,
             d.half_width,
             d.half_height,
+            border,
         ),
-        Command::BottomRight => dispatch_active(
+        Command::BottomRight => dispatch_visible(
             area.x + d.half_width + d.gap_h,
             area.y + d.half_height + d.gap_v,
             d.half_width,
             d.half_height,
+            border,
         ),
 
-        Command::LeftThird => dispatch_active(area.x, area.y, d.third_width, area.height),
-        Command::CenterThird => dispatch_active(
+        Command::LeftThird => {
+            dispatch_visible(area.x, area.y, d.third_width, area.height, border)
+        }
+        Command::CenterThird => dispatch_visible(
             area.x + d.third_width + d.gap_h,
             area.y,
             d.third_width,
             area.height,
+            border,
         ),
-        Command::RightThird => dispatch_active(
+        Command::RightThird => dispatch_visible(
             area.x + d.third_width * 2 + d.gap_h * 2,
             area.y,
             d.third_width,
             area.height,
+            border,
         ),
-        Command::LeftTwoThird => dispatch_active(area.x, area.y, d.two_third_width, area.height),
-        Command::RightTwoThird => dispatch_active(
+        Command::LeftTwoThird => {
+            dispatch_visible(area.x, area.y, d.two_third_width, area.height, border)
+        }
+        Command::RightTwoThird => dispatch_visible(
             area.x + d.third_width + d.gap_h,
             area.y,
             d.two_third_width,
             area.height,
+            border,
         ),
 
-        Command::Maximize => dispatch_active(area.x, area.y, area.width, area.height),
+        Command::Maximize => {
+            dispatch_visible(area.x, area.y, area.width, area.height, border)
+        }
         Command::Center => {
-            let w = area.width * CENTER_SIZE_PERCENT / 100;
-            let h = area.height * CENTER_SIZE_PERCENT / 100;
-            let x = area.x + (area.width - w) / 2;
-            let y = area.y + (area.height - h) / 2;
-            dispatch_active(x, y, w, h)
+            let vw = area.width * CENTER_SIZE_PERCENT / 100;
+            let vh = area.height * CENTER_SIZE_PERCENT / 100;
+            let vx = area.x + (area.width - vw) / 2;
+            let vy = area.y + (area.height - vh) / 2;
+            dispatch_visible(vx, vy, vw, vh, border)
         }
 
         Command::Restore => {
