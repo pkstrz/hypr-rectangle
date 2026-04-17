@@ -9,9 +9,15 @@ use crate::cli::Command;
 use crate::dims::calculate_dimensions;
 use crate::gaps::Gaps;
 
-/// Delay between MoveActive and ResizeActive dispatch calls.
+/// Delay between ResizeActive and MoveActive dispatch calls.
 /// hyprland-rs 0.4-beta.3 has no atomic move+resize; empirically 10 ms
 /// is enough for the compositor to apply the first op before the second.
+///
+/// Order is resize-then-move because Hyprland ≥ 0.54 resizes a floating
+/// window around its current center (not from its top-left corner). Doing
+/// move first would put the window at the right spot, then resize would
+/// shift it back toward the center; doing resize first lets the center-pull
+/// happen, and then move places the final top-left corner exactly.
 const MOVE_RESIZE_DELAY: Duration = Duration::from_millis(10);
 
 /// Percentage of usable area used by the `center` command (Rectangle.app parity).
@@ -21,11 +27,11 @@ const CENTER_SIZE_PERCENT: i32 = 75;
 pub fn dispatch_active(x: i32, y: i32, width: i32, height: i32) -> Result<()> {
     let (x, y, w, h) = to_i16_tuple(x, y, width, height)?;
 
-    Dispatch::call(DispatchType::MoveActive(Position::Exact(x, y)))
-        .context("Failed to move window")?;
-    sleep(MOVE_RESIZE_DELAY);
     Dispatch::call(DispatchType::ResizeActive(Position::Exact(w, h)))
         .context("Failed to resize window")?;
+    sleep(MOVE_RESIZE_DELAY);
+    Dispatch::call(DispatchType::MoveActive(Position::Exact(x, y)))
+        .context("Failed to move window")?;
 
     Ok(())
 }
@@ -53,14 +59,14 @@ pub fn dispatch_by_address(
     let (x, y, w, h) = to_i16_tuple(x, y, width, height)?;
     let id = WindowIdentifier::Address(address.clone());
 
-    Dispatch::call(DispatchType::MoveWindowPixel(
-        Position::Exact(x, y),
+    Dispatch::call(DispatchType::ResizeWindowPixel(
+        Position::Exact(w, h),
         id.clone(),
     ))
-    .context("Failed to move window")?;
+    .context("Failed to resize window")?;
     sleep(MOVE_RESIZE_DELAY);
-    Dispatch::call(DispatchType::ResizeWindowPixel(Position::Exact(w, h), id))
-        .context("Failed to resize window")?;
+    Dispatch::call(DispatchType::MoveWindowPixel(Position::Exact(x, y), id))
+        .context("Failed to move window")?;
 
     Ok(())
 }

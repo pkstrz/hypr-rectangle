@@ -6,7 +6,9 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:wiki.hypr.land)"
+      "WebFetch(domain:wiki.hypr.land)",
+      "Read(//home/patryk-nix/.config/hypr/**)",
+      "Read(//home/patryk-nix/.config/**)"
     ]
   }
 }
