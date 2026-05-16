@@ -1,8 +1,10 @@
 # hypr-rectangle
 
-Rectangle-like window management for [Hyprland](https://hyprland.org/).
+Window management for [Hyprland](https://hyprland.org/).
 
-Snap windows to halves, thirds, or center with keyboard shortcuts - just like [Rectangle](https://rectangleapp.com/) on macOS.
+Snap windows to halves, thirds, or center with keyboard shortcuts.
+
+This project is heavily inspired by [Rectangle](https://rectangleapp.com/), the macOS window manager created by [Ryan Hanson](https://github.com/rxhanson).
 
 ## Features
 
@@ -114,9 +116,10 @@ See [examples/hyprland.conf](examples/hyprland.conf) for the full binding file.
 
 ## Rectangle.app feature parity
 
-Compared against [Rectangle.app](https://github.com/rxhanson/Rectangle) on macOS
-(actions from `WindowAction.swift`). Default binds shown are Rectangle's
-Alternate set, matched 1:1 above.
+Compared against [Rectangle.app](https://github.com/rxhanson/Rectangle) on macOS,
+using the public action list from the upstream README and the latest release
+notes available at the time of writing (v0.95, April 2, 2025). Default binds
+shown are Rectangle's Alternate set, matched 1:1 above where implemented.
 
 ### Implemented
 
@@ -146,22 +149,42 @@ monitor instead of the active one.
 
 | Category | Rectangle actions |
 |---|---|
-| Resize steps | Larger / Smaller (both axes or per-axis), Double/Halve Width/Height |
+| Resize steps | Larger / Smaller, per-axis resize actions, Double/Halve Width/Height |
 | Fine movement | Move Left / Right / Up / Down (shift without resize) |
-| Extra fits | Almost Maximize, Maximize Height, Center Prominently, Center Half, Center Two-Thirds |
+| Extra fits | Almost Maximize, Maximize Height, Center Prominently, Center Half, Center Two-Thirds, Center Three-Fourths |
 | Fourths | First / Second / Third / Last Fourth, Three-Fourths variants |
 | Sixths | All 6 corner/edge sixths |
-| Ninths | 3×3 grid |
-| Eighths / Twelfths / Sixteenths | Finer grid splits |
+| Ninths | Full 3×3 grid |
+| Corner-thirds | Top Left / Top Right / Bottom Left / Bottom Right Third |
+| Eighths | Full 2×4 grid |
+| Twelfths / Sixteenths | 3×4 and 4×4 grid positions |
 | Display moves | Next Display, Previous Display, Display 1..9 (direct) |
-| Orientation-aware thirds | Vertical thirds/two-thirds, corner-thirds |
-| Batch | Tile All, Cascade All, Tile / Cascade Active App |
+| Orientation-aware thirds | Vertical thirds/two-thirds on portrait displays |
+| Batch | Tile All, Cascade All, Cascade Active App |
 | Drag | Snap areas (drag window to edge/corner to snap) |
 | Custom | "Specified" (user-defined size), Reverse All |
 | Cycling | Halves → Two-Thirds → Thirds on repeated press |
 
 Snap areas require Hyprland-side support for drag tracking and are outside the
 scope of a one-shot CLI. The rest are candidates for future commands.
+
+## Inspiration
+
+`hypr-rectangle` is a Linux/Hyprland take on the workflow popularized by
+[Rectangle](https://rectangleapp.com/) on macOS. The goal is not to clone the
+entire app surface, but to bring a similar keyboard-driven window placement
+experience to Hyprland while respecting its own concepts like gaps, layer
+surfaces, and monitor targeting.
+
+Many of the currently implemented actions and the default example keybinds are
+deliberately modeled after Rectangle's action set and "Alternate" shortcuts to
+make the tool feel familiar for people moving from macOS.
+
+## Thanks
+
+Thanks to [Ryan Hanson](https://github.com/rxhanson) for creating
+[Rectangle](https://github.com/rxhanson/Rectangle), which strongly inspired
+this project and provided a clear reference point for its command set and UX.
 
 ## How it works
 
