@@ -81,21 +81,43 @@ fn get_hyprctl_option(option: &str) -> Result<String> {
     let json: serde_json::Value =
         serde_json::from_str(&json_str).context("Failed to parse hyprctl JSON output")?;
 
-    // Order matters: `custom` holds vector values (gap TRBL), typed fields hold scalars.
+    extract_option_value(&json).with_context(|| {
+        format!(
+            "hyprctl getoption {} returned no recognizable value: {}",
+            option,
+            json_str.trim()
+        )
+    })
+}
+
+/// Pull the value out of a `hyprctl getoption -j` object.
+///
+/// Field names depend on the Hyprland version and option type:
+/// - `css`: vector/CSS-gap values (`"20 20 20 20"`), Hyprland ≥ 0.56
+/// - `custom`: the same vector values on older Hyprland versions
+/// - `int` / `float` / `str`: scalar values
+///
+/// Returns `None` when none of them is present, so callers fail loudly
+/// instead of silently treating an unknown format as `0` (which would
+/// remove all gaps).
+fn extract_option_value(json: &serde_json::Value) -> Option<String> {
+    // Order matters: vector fields first, typed scalar fields after.
+    if let Some(css) = json.get("css").and_then(|v| v.as_str()) {
+        return Some(css.to_string());
+    }
     if let Some(custom) = json.get("custom").and_then(|v| v.as_str()) {
-        return Ok(custom.to_string());
+        return Some(custom.to_string());
     }
     if let Some(int_val) = json.get("int").and_then(|v| v.as_i64()) {
-        return Ok(int_val.to_string());
+        return Some(int_val.to_string());
     }
     if let Some(float_val) = json.get("float").and_then(|v| v.as_f64()) {
-        return Ok(float_val.to_string());
+        return Some(float_val.to_string());
     }
     if let Some(str_val) = json.get("str").and_then(|v| v.as_str()) {
-        return Ok(str_val.to_string());
+        return Some(str_val.to_string());
     }
-
-    Ok("0".to_string())
+    None
 }
 
 /// Read outer and inner gap settings from Hyprland.
@@ -118,6 +140,34 @@ pub fn get_border_size() -> Result<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn json(s: &str) -> serde_json::Value {
+        serde_json::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn option_value_from_css_field_hyprland_0_56() {
+        let v = json(r#"{"option": "general:gaps_out", "css": "20 20 20 20", "set": true}"#);
+        assert_eq!(extract_option_value(&v).as_deref(), Some("20 20 20 20"));
+    }
+
+    #[test]
+    fn option_value_from_custom_field_legacy() {
+        let v = json(r#"{"option": "general:gaps_in", "custom": "5 5 5 5", "set": true}"#);
+        assert_eq!(extract_option_value(&v).as_deref(), Some("5 5 5 5"));
+    }
+
+    #[test]
+    fn option_value_from_int_field() {
+        let v = json(r#"{"option": "general:border_size", "int": 2, "set": true}"#);
+        assert_eq!(extract_option_value(&v).as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn option_value_unknown_format_is_none() {
+        let v = json(r#"{"option": "general:gaps_out", "set": true}"#);
+        assert_eq!(extract_option_value(&v), None);
+    }
 
     #[test]
     fn parse_empty() {

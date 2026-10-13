@@ -197,7 +197,11 @@ this project and provided a clear reference point for its command set and UX.
 
 ## Requirements
 
-- Hyprland (tested with 0.40+)
+- Hyprland (tested with 0.40+ and 0.56). On Hyprland ≥ 0.56 the legacy
+  `resizeactive exact W H` / `moveactive exact X Y` dispatcher syntax no longer
+  works, so window placement goes through the Lua dispatchers
+  (`hl.dsp.window.resize` / `hl.dsp.window.move`) via `hyprctl dispatch`; older
+  versions fall back to the legacy syntax automatically.
 - Rust 1.70+ (for building)
 
 ## License
